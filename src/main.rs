@@ -13,21 +13,11 @@ fn main() {
         vec![Fr::from(8u32), Fr::from(9u32)],
         vec![Fr::from(10u32), Fr::from(11u32)],
         vec![Fr::from(12u32), Fr::from(13u32)],
-        vec![Fr::from(14u32), Fr::from(15u32)],
-        vec![Fr::from(6u32), Fr::from(7u32)],
-        vec![Fr::from(8u32), Fr::from(9u32)],
-        vec![Fr::from(10u32), Fr::from(11u32)],
-        vec![Fr::from(12u32), Fr::from(13u32)],
-        vec![Fr::from(14u32), Fr::from(15u32)],
     ];
 
     // initialize the Circom circuit
-    let r1cs_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs.r1cs",
-    );
-    let wasm_path = PathBuf::from(
-        "./folding-schemes/src/frontend/circom/test_folder/with_external_inputs_js/with_external_inputs.wasm",
-    );
+    let r1cs_path = PathBuf::from("circuit_files/cubic.r1cs");
+    let wasm_path = PathBuf::from("curcuit_files/cubic.wasm");
 
     let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
