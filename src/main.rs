@@ -2,6 +2,9 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
 
+use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
+use std::path::PathBuf;
+
 fn main() {
     // set the initial state
     let z_0 = vec![Fr::from(3_u32)];

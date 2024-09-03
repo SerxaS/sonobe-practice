@@ -4,14 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-folding-schemes = { git = "https://github.com/privacy-scaling-explorations/sonobe.git", package="folding-schemes", branch="main", features=["light-test"] }
-solidity-verifiers = { git = "https://github.com/privacy-scaling-explorations/sonobe.git", package="solidity-verifiers", branch="main" }
-ark-grumpkin = {version="0.4.0", features=["r1cs"]}
 ark-bn254 = {version="0.4.0", features=["r1cs"]}
-ark-groth16 = "0.4.0"
-rand = "0.8.5"
+
 
 [patch.crates-io]
-ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", branch="cherry-pick" }
 ark-bn254 = { git = "https://github.com/arnaucube/ark-curves-cherry-picked", branch="cherry-pick"}
-ark-grumpkin = { git = "https://github.com/arnaucube/ark-curves-cherry-picked", branch="cherry-pick"}
+
