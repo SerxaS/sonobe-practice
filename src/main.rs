@@ -3,7 +3,16 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use ark_bn254::{constraints::GVar, Bn254, Fr, G1Projective as G1};
-use std::path::PathBuf;
+use ark_groth16::Groth16;
+use ark_grumpkin::{constraints::GVar as GVar2, Projective as G2};
+use ark_std::rand;
+use folding_schemes::{
+    commitment::{kzg::KZG, pedersen::Pedersen},
+    folding::nova::{decider_eth::Decider as DeciderEth, Nova, PreprocessorParam},
+    frontend::{circom::CircomFCircuit, FCircuit},
+    transcript::poseidon::poseidon_canonical_config,
+};
+use std::{path::PathBuf, time::Instant};
 
 fn main() {
     // set the initial state
@@ -19,15 +28,16 @@ fn main() {
     ];
 
     // initialize the Circom circuit
-    let r1cs_path = PathBuf::from("circuit_files/cubic.r1cs");
-    let wasm_path = PathBuf::from("curcuit_files/cubic.wasm");
+    let r1cs_path = PathBuf::from("./circuit_files/cubic.r1cs");
+    let wasm_path = PathBuf::from("./curcuit_files/cubic.wasm");
 
     let f_circuit_params = (r1cs_path.into(), wasm_path.into(), 1, 2);
     let f_circuit = CircomFCircuit::<Fr>::new(f_circuit_params).unwrap();
 
-    pub type N =
-        Nova<G1, GVar, G2, GVar2, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
-    pub type D = DeciderEth<
+    pub type NOVA =
+        Nova<G1, GVar, G2, GVar, CircomFCircuit<Fr>, KZG<'static, Bn254>, Pedersen<G2>, false>;
+
+    pub type DECIDERETH_FCircuit = DeciderEth<
         G1,
         GVar,
         G2,
@@ -36,7 +46,7 @@ fn main() {
         KZG<'static, Bn254>,
         Pedersen<G2>,
         Groth16<Bn254>,
-        N,
+        NOVA,
     >;
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
@@ -44,10 +54,10 @@ fn main() {
 
     // prepare the Nova prover & verifier params
     let nova_preprocess_params = PreprocessorParam::new(poseidon_config, f_circuit.clone());
-    let nova_params = N::preprocess(&mut rng, &nova_preprocess_params).unwrap();
+    let nova_params = NOVA::preprocess(&mut rng, &nova_preprocess_params).unwrap();
 
     // initialize the folding scheme engine, in our case we use Nova
-    let mut nova = N::init(&nova_params, f_circuit.clone(), z_0).unwrap();
+    let mut nova = NOVA::init(&nova_params, f_circuit.clone(), z_0).unwrap();
 
     // prepare the Decider prover & verifier params
     let (decider_pp, decider_vp) = D::preprocess(&mut rng, &nova_params, nova.clone()).unwrap();
@@ -61,10 +71,10 @@ fn main() {
     }
 
     let start = Instant::now();
-    let proof = D::prove(rng, decider_pp, nova.clone()).unwrap();
+    let proof = DECIDERETH_FCircuit::prove(rng, decider_pp, nova.clone()).unwrap();
     println!("generated Decider proof: {:?}", start.elapsed());
 
-    let verified = D::verify(
+    let verified = DECIDERETH_FCircuit::verify(
         decider_vp.clone(),
         nova.i,
         nova.z_0.clone(),
@@ -77,43 +87,43 @@ fn main() {
     assert!(verified);
     println!("Decider proof verification: {}", verified);
 
-    // Now, let's generate the Solidity code that verifies this Decider final proof
-    let function_selector =
-        get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
+    // // Now, let's generate the Solidity code that verifies this Decider final proof
+    // let function_selector =
+    //     get_function_selector_for_nova_cyclefold_verifier(nova.z_0.len() * 2 + 1);
 
-    let calldata: Vec<u8> = prepare_calldata(
-        function_selector,
-        nova.i,
-        nova.z_0,
-        nova.z_i,
-        &nova.U_i,
-        &nova.u_i,
-        proof,
-    )
-    .unwrap();
+    // let calldata: Vec<u8> = prepare_calldata(
+    //     function_selector,
+    //     nova.i,
+    //     nova.z_0,
+    //     nova.z_i,
+    //     &nova.U_i,
+    //     &nova.u_i,
+    //     proof,
+    // )
+    // .unwrap();
 
-    // prepare the setup params for the solidity verifier
-    let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((decider_vp, f_circuit.state_len()));
+    // // prepare the setup params for the solidity verifier
+    // let nova_cyclefold_vk = NovaCycleFoldVerifierKey::from((decider_vp, f_circuit.state_len()));
 
-    // generate the solidity code
-    let decider_solidity_code = get_decider_template_for_cyclefold_decider(nova_cyclefold_vk);
+    // // generate the solidity code
+    // let decider_solidity_code = get_decider_template_for_cyclefold_decider(nova_cyclefold_vk);
 
-    // verify the proof against the solidity code in the EVM
-    let nova_cyclefold_verifier_bytecode = compile_solidity(&decider_solidity_code, "NovaDecider");
-    let mut evm = Evm::default();
-    let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
-    let (_, output) = evm.call(verifier_address, calldata.clone());
-    assert_eq!(*output.last().unwrap(), 1);
+    // // verify the proof against the solidity code in the EVM
+    // let nova_cyclefold_verifier_bytecode = compile_solidity(&decider_solidity_code, "NovaDecider");
+    // let mut evm = Evm::default();
+    // let verifier_address = evm.create(nova_cyclefold_verifier_bytecode);
+    // let (_, output) = evm.call(verifier_address, calldata.clone());
+    // assert_eq!(*output.last().unwrap(), 1);
 
-    // save smart contract and the calldata
-    println!("storing nova-verifier.sol and the calldata into files");
-    use std::fs;
-    fs::write(
-        "./examples/nova-verifier.sol",
-        decider_solidity_code.clone(),
-    )
-    .unwrap();
-    fs::write("./examples/solidity-calldata.calldata", calldata.clone()).unwrap();
-    let s = solidity_verifiers::utils::get_formatted_calldata(calldata.clone());
-    fs::write("./examples/solidity-calldata.inputs", s.join(",\n")).expect("");
+    // // save smart contract and the calldata
+    // println!("storing nova-verifier.sol and the calldata into files");
+    // use std::fs;
+    // fs::write(
+    //     "./examples/nova-verifier.sol",
+    //     decider_solidity_code.clone(),
+    // )
+    // .unwrap();
+    // fs::write("./examples/solidity-calldata.calldata", calldata.clone()).unwrap();
+    // let s = solidity_verifiers::utils::get_formatted_calldata(calldata.clone());
+    // fs::write("./examples/solidity-calldata.inputs", s.join(",\n")).expect("");
 }
